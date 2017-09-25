@@ -17,6 +17,8 @@ import tempfile
 
 import ui
 reload(ui)
+import dialog_ui
+reload(dialog_ui)
 import maya_utils as mu
 reload(mu)
 
@@ -51,6 +53,20 @@ class MyForm(QtGui.QMainWindow):
         self.tmpDir = 'P:/Outsource/tmp/%s' % self.user
         self.listFile = '%s/%s_list.yml' % (self.tmpDir, self.user)
 
+
+        # icons
+        self.iconDir = '%s/icons'% os.path.dirname(moduleDir).replace('\\', '/')
+        self.mayaIcon = '%s/%s' % (self.iconDir, 'maya_icon.png')
+        self.textureIcon = '%s/%s' % (self.iconDir, 'texture_icon.png')
+        self.alembicIcon = '%s/%s' % (self.iconDir, 'alembic_icon.png')
+
+        self.okIcon = '%s/%s' % (self.iconDir, 'ok_icon.png')
+        self.rdyIcon = '%s/%s' % (self.iconDir, 'rdy_icon.png')
+        self.ipIcon = '%s/%s' % (self.iconDir, 'ip_icon.png')
+        self.redIcon = '%s/%s' % (self.iconDir, 'red2_icon.png')
+
+
+
         # data 
         self.dstPath = str()
         self.shotList = []
@@ -65,14 +81,18 @@ class MyForm(QtGui.QMainWindow):
 
     def initSignals(self) : 
         self.ui.addShot_lineEdit.returnPressed.connect(self.addShot)
+        self.ui.loadMultipleShot_pushButton.clicked.connect(self.doAddMultipleShot)
         self.ui.loadAsset_pushButton.clicked.connect(self.doLoadAsset)
         self.ui.copy_pushButton.clicked.connect(self.doCopy)
         self.ui.checkPath_pushButton.clicked.connect(self.checkFile)
         self.ui.dst_lineEdit.textChanged.connect(self.checkFile)
+        self.ui.loadShot_pushButton.clicked.connect(self.loadList)
+        self.ui.removeList_pushButton.clicked.connect(self.removeList)
 
 
     def initFunctions(self) : 
-        self.loadList()
+        pass
+        # self.loadList()
 
 
     def resizeColumn(self) : 
@@ -96,10 +116,21 @@ class MyForm(QtGui.QMainWindow):
                 self.loadShotList()
                 self.setDisplayAssetTable()
 
+    def removeList(self) : 
+        items = self.ui.shot_listWidget.selectedItems()
+
+        for item in items : 
+            row = self.ui.shot_listWidget.row(item)
+            self.ui.shot_listWidget.takeItem(row)
+
+        self.saveList()
+        # self.loadList()
 
 
-    def addShot(self) : 
-        strInput = str(self.ui.addShot_lineEdit.text()).replace('\\', '/')
+    def addShot(self, strInput=None, multiMode=False) : 
+        if not strInput : 
+            strInput = str(self.ui.addShot_lineEdit.text()).replace('\\', '/').replace('"', '').replace(' ', '')
+
         self.ui.addShot_lineEdit.clear()
         listWidget = 'shot_listWidget'
         color = [200, 200, 200]
@@ -108,33 +139,82 @@ class MyForm(QtGui.QMainWindow):
         if strInput : 
             if os.path.exists(strInput) : 
                 if not strInput in allItems : 
-                    self.addListWidgetItem(listWidget, strInput, '', color)
+                    self.addListWidgetItem(listWidget, strInput, self.mayaIcon, color)
+                    return 1
 
                 else : 
-                    self.messageBox('Warning', 'File exists in the list')
+                    if not multiMode : 
+                        self.messageBox('Warning', 'File exists in the list')
+
+                    else : 
+                        return 2
 
             else : 
-                self.messageBox('Warning', 'File not exists. Please check path')
+                if not multiMode : 
+                    self.messageBox('Warning', 'File not exists. Please check path')
 
+                else : 
+                    return 0
+
+            print strInput
 
 
     def loadShotList(self) : 
         shots = self.data['shot']
         dstPath = self.data['dstPath']
-        self.ui.shot_listWidget.addItems(shots)
+        
+        for shot in shots : 
+            self.addListWidgetItem('shot_listWidget', shot, self.mayaIcon, '')
+
         self.ui.dst_lineEdit.setText(dstPath)
 
 
+    def doAddMultipleShot(self) : 
+        dialog = MultipleListDialog()
+        result = dialog.exec_()
+        content = dialog.content()
+        notExists = []
+        duplicated = []
+        
+        if content : 
+            lines = content.split('\n')
+            lines = [a.strip() for a in lines]
+
+            for line in lines : 
+                addStr = line.replace('\\', '/').replace('"', '')
+                result = self.addShot(strInput=addStr, multiMode=True)
+
+                if result == 0 : 
+                    notExists.append(addStr)
+
+                if result == 2 : 
+                    duplicated.append(addStr)
+
+        if notExists : 
+            self.messageBox('Warning', '%s files not exists' % len(notExists))
+
+        if duplicated : 
+            self.messageBox('Warning', '%s files already on the list' % len(duplicated))
+
 
     def doLoadAsset(self) : 
-        self.collectData()
-        self.setDisplayAssetTable()
+        sels = self.getShotList()
+
+        if sels : 
+            self.collectData()
+            self.setDisplayAssetTable()
+
+            if self.ui.autoCopy_checkBox.isChecked() : 
+                self.doCopy(True)
+
+        else : 
+            self.messageBox('Error', 'Select atlease one shot')
 
 
 
-    def doCopy(self) : 
+    def doCopy(self, autoCopy = False) : 
         dst = str(self.ui.dst_lineEdit.text()).replace('\\', '/')
-        counts = self.getSelectedRow()
+        counts = self.getSelectedRow(autoCopy)
         data = []
 
         if dst : 
@@ -150,20 +230,28 @@ class MyForm(QtGui.QMainWindow):
                     dstItem = self.ui.asset_tableWidget.item(i, self.copyDstCol)
 
                     if os.path.exists(dstPath) : 
-                        statusItem.setText('OK')
+                        # statusItem.setText('OK')
+                        self.setItemIcon(statusItem, i, self.statusCol, self.okIcon, 'OK')
 
                     else : 
                         print 'Copying %s ...' % dstPath
-                        result = fileUtils.copy(srcPath, dstPath)
+                        self.setItemIcon(statusItem, i, self.statusCol, self.ipIcon, 'Copying ...')
+                        
+                        try : 
+                            result = fileUtils.copy(srcPath, dstPath)
 
-                        if os.path.exists(dstPath) : 
-                            statusItem.setText('OK')
+                            if os.path.exists(dstPath) : 
+                                # statusItem.setText('OK')
+                                self.setItemIcon(statusItem, i, self.statusCol, self.okIcon, 'OK')
+                                dstItem.setText(dstPath)
+
+                                QtGui.QApplication.processEvents()
+
+                        except Exception as e : 
+                            self.setItemIcon(statusItem, i, self.statusCol, self.redIcon, 'Error')
                             dstItem.setText(dstPath)
 
                             QtGui.QApplication.processEvents()
-        
-
-
 
     def setDisplayAssetTable(self) : 
         shots = self.data['shot']
@@ -254,10 +342,12 @@ class MyForm(QtGui.QMainWindow):
                     targetItem = self.ui.asset_tableWidget.item(i, self.statusCol)
 
                     if os.path.exists(dstPath) : 
-                        targetItem.setText('OK')
+                        # targetItem.setText('OK')
+                        self.setItemIcon(targetItem, i, self.sourcePathCol, self.okIcon, 'OK')
 
                     else : 
-                        targetItem.setText('Not copy')
+                        # targetItem.setText('Not copy')
+                        self.setItemIcon(targetItem, i, self.sourcePathCol, self.rdyIcon, 'Not copy')
 
             # save dst path 
             self.dstPath = dst
@@ -317,7 +407,6 @@ class MyForm(QtGui.QMainWindow):
                                 if not shot in self.assemblyDict[assemblyFile] : 
                                     self.assemblyDict[assemblyFile].append(shot)
 
-            print self.shotList 
             self.data = {'shot': self.shotList, 'asset': self.assetDict, 'assembly': self.assemblyDict, 'texture': self.textureDict, 'dstPath': self.dstPath}
             self.saveList()
 
@@ -335,20 +424,33 @@ class MyForm(QtGui.QMainWindow):
 
 
 
-    def getSelectedRow(self) : 
-        if self.ui.allShot_checkBox.isChecked() : 
+    def getSelectedRow(self, allRow = False) : 
+        if allRow : 
             counts = self.ui.asset_tableWidget.rowCount()
 
-            return [0, counts]
+            allRows = [0, counts + 1]
+            return allRows
 
         else : 
-            lists = self.ui.asset_tableWidget.selectedRanges()
+            if self.ui.allShot_checkBox.isChecked() : 
+                counts = self.ui.asset_tableWidget.rowCount()
 
-            if lists : 
-                topRow = lists[0].topRow()
-                bottomRow = lists[0].bottomRow()
+                allRows = [0, counts + 1]
+                return allRows
 
-                return [topRow, bottomRow]
+            else : 
+                lists = self.ui.asset_tableWidget.selectedRanges()
+
+                if lists : 
+                    topRow = lists[0].topRow()
+                    bottomRow = lists[0].bottomRow()
+
+                    selectedRows = [topRow, bottomRow + 1]
+                    return selectedRows
+
+        
+
+
 
 
         # self.resizeColumn()
@@ -359,9 +461,10 @@ class MyForm(QtGui.QMainWindow):
     def addTableData(self, row, fileType, fileName, status, no, srcPath, copyDst, color) : 
         height = 20
         widget = 'asset_tableWidget'
+        iconPath = self.getIcon(fileName)
         self.insertRow(row, height, widget)
         self.fillInTable(row, self.fileTypeCol, fileType, widget, color)
-        self.fillInTable(row, self.fileNameCol, fileName, widget, color)
+        self.fillInTableIcon(row, self.fileNameCol, fileName, iconPath, widget, color)
         self.fillInTable(row, self.statusCol, status, widget, color)
         self.fillInTable(row, self.noCol, no, widget, color)
         self.fillInTable(row, self.sourcePathCol, srcPath, widget, color)
@@ -383,6 +486,14 @@ class MyForm(QtGui.QMainWindow):
             fileType = 'Unknown'
 
         return fileType
+
+
+    def getIcon(self, fileName) : 
+        iconMap = {'Maya': self.mayaIcon, 'Texture': self.textureIcon, 'Alembic': self.mayaIcon, 'Unknown': self.mayaIcon}
+        result = self.getFileType(fileName)
+
+        iconPath = iconMap[result]
+        return iconPath
 
 
     def getShotList(self) : 
@@ -439,6 +550,8 @@ class MyForm(QtGui.QMainWindow):
         cmd = 'self.ui.%s.setItem(row, column, item)' % widget
         eval(cmd)
 
+        QtGui.QApplication.processEvents()
+
 
     def fillInTableIcon(self, row, column, text, iconPath, widget, color = [1, 1, 1]) : 
         icon = QtGui.QIcon()
@@ -447,11 +560,23 @@ class MyForm(QtGui.QMainWindow):
         item = QtGui.QTableWidgetItem()
         item.setText(str(text))
         item.setIcon(icon)
-        item.setBackground(QtGui.QColor(color[0], color[1], color[2]))
+        # item.setBackground(QtGui.QColor(color[0], color[1], color[2]))
         
         cmd = 'self.ui.%s.setItem(row, column, item)' % widget
         eval(cmd)
 
+        QtGui.QApplication.processEvents()
+
+
+    def setItemIcon(self, item, row, column, iconPath, text) : 
+        icon = QtGui.QIcon()
+        icon.addPixmap(QtGui.QPixmap(iconPath), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+
+        item.setText(str(text))
+        item.setIcon(icon)
+        # item.setBackground(QtGui.QColor(color[0], color[1], color[2]))
+
+        QtGui.QApplication.processEvents()
 
 
     def clearTable(self, widget) : 
@@ -517,6 +642,27 @@ class MyForm(QtGui.QMainWindow):
 
         return result
 
+    def questionDialog(self, title, description) : 
+        result = QtGui.QMessageBox.question(self,title,description,QtGui.QMessageBox.Ok, QtGui.QMessageBox.Cancel)
+
+        return result
+
+class MultipleListDialog(QtGui.QDialog, MyForm):
+
+    def __init__(self, parent = None):
+        QtGui.QDialog.__init__(self, parent)
+        self.ui = dialog_ui.Ui_Dialog()
+        self.ui.setupUi(self)
+        self.ui.add_pushButton.clicked.connect(self.closeDialog)
+
+
+    def content(self) : 
+        value = str(self.ui.list_textEdit.toPlainText())
+
+        return value
+
+    def closeDialog(self) : 
+        self.close()
 
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)

@@ -48,6 +48,23 @@
           <item>
            <widget class="QLineEdit" name="addShot_lineEdit"/>
           </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <item>
+           <widget class="QPushButton" name="loadMultipleShot_pushButton">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>30</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Load Multiple Shot</string>
+            </property>
+           </widget>
+          </item>
           <item>
            <widget class="QPushButton" name="loadShot_pushButton">
             <property name="minimumSize">
@@ -58,6 +75,19 @@
             </property>
             <property name="text">
              <string>Load Shot List</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="removeList_pushButton">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>30</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Remove List</string>
             </property>
            </widget>
           </item>
@@ -140,7 +170,7 @@
           <item>
            <widget class="QCheckBox" name="allShot_checkBox">
             <property name="text">
-             <string>All Shots</string>
+             <string>All Assets</string>
             </property>
            </widget>
           </item>
@@ -195,7 +225,7 @@
           <item>
            <widget class="QPushButton" name="checkPath_pushButton">
             <property name="text">
-             <string>Set</string>
+             <string>Refresh</string>
             </property>
            </widget>
           </item>
